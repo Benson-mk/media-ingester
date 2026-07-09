@@ -97,15 +97,16 @@ test("buildExternalSidecar photo: exif + location + core tags, validates schema"
   const rawPath = "/tmp/x.external.raw.json"
   const sidecar = buildExternalSidecar(item, jsonLd, "/tmp/pexels-12345.jpg", "abc123", rawPath)
 
-  expect(sidecar.external?.exif).toEqual({ iso: 100, camera: "Canon EOS" })
-  expect(sidecar.external?.location).toBe("Swiss Alps")
+  expect(sidecar.source?.origin).toBe("external")
+  expect(sidecar.source?.exif).toEqual({ iso: 100, camera: "Canon EOS" })
+  expect(sidecar.source?.location).toBe("Swiss Alps")
   expect(sidecar.tags.core.length).toBeGreaterThanOrEqual(20)
   expect(sidecar.tags.core).toContain("mountain")
-  expect(sidecar.external?.credits.text).toBe(
+  expect(sidecar.source?.credits?.text).toBe(
     "Photo by Jane Doe on Pexels: https://www.pexels.com/photo/12345/",
   )
   expect(sidecar.asset_id).toBe("sha256:abc123")
-  expect(sidecar.external?.raw_metadata_path).toBe(rawPath)
+  expect(sidecar.source?.raw_metadata_path).toBe(rawPath)
 
   const result = MediaSidecarSchema.safeParse(sidecar)
   expect(result.success).toBe(true)
@@ -119,9 +120,9 @@ test("buildExternalSidecar video: no exif, no location, video credits label", ()
   }
   const sidecar = buildExternalSidecar(item, jsonLd, "/tmp/pexels-67890.mp4", "vid1", "/tmp/r.json")
 
-  expect(sidecar.external?.exif).toBeUndefined()
-  expect(sidecar.external?.location).toBeUndefined()
-  expect(sidecar.external?.credits.text).toBe(
+  expect(sidecar.source?.exif).toBeUndefined()
+  expect(sidecar.source?.location).toBeUndefined()
+  expect(sidecar.source?.credits?.text).toBe(
     "Video by John Smith on Pexels: https://www.pexels.com/video/67890/",
   )
   expect(sidecar.technical["duration_seconds"]).toBe(30)
@@ -147,10 +148,10 @@ test("buildExternalSidecar wikimedia: no jsonLd, tags from api_tags, no exif/loc
   const item = makeWikimediaItem()
   const sidecar = buildExternalSidecar(item, null, "/tmp/wikimedia-x.jpg", "wiki1", "/tmp/r.json")
 
-  expect(sidecar.external?.exif).toBeUndefined()
-  expect(sidecar.external?.location).toBeUndefined()
+  expect(sidecar.source?.exif).toBeUndefined()
+  expect(sidecar.source?.location).toBeUndefined()
   expect(sidecar.tags.core).toEqual(["landmark", "history"])
-  expect(sidecar.external?.credits.text).toBe(
+  expect(sidecar.source?.credits?.text).toBe(
     "Photo by Some Author on Wikimedia: https://commons.wikimedia.org/wiki/File:Example.jpg",
   )
   expect(sidecar.summary.short_caption).toBe("An example file")

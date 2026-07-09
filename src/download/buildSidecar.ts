@@ -1,6 +1,6 @@
 import { basename } from "node:path"
 import { parseIsoDuration } from "../common/parseIsoDuration"
-import type { ExternalBlock, MediaSidecar } from "../common/schema"
+import type { MediaSidecar, SourceBlock } from "../common/schema"
 import type { PexelsJsonLd } from "../crawl/extractJsonLd"
 import type { ProviderItem } from "../providers/types"
 
@@ -72,7 +72,8 @@ export function buildExternalSidecar(
   const now = new Date().toISOString()
   const creditsText = `${mediaTypeLabel(item.media_type)} by ${item.creator.name} on ${providerLabel(item.provider)}: ${item.source_url}`
 
-  const external: ExternalBlock = {
+  const source: SourceBlock = {
+    origin: "external",
     provider: item.provider,
     source_id: item.source_id,
     source_url: item.source_url,
@@ -88,9 +89,9 @@ export function buildExternalSidecar(
   }
 
   const exif = buildExif(jsonLd)
-  if (exif !== undefined) external.exif = exif
+  if (exif !== undefined) source.exif = exif
   const location = jsonLd?.contentLocation?.name
-  if (location !== undefined) external.location = location
+  if (location !== undefined) source.location = location
 
   return {
     schema_version: "1.1",
@@ -131,6 +132,6 @@ export function buildExternalSidecar(
       model: "none",
       media_uploaded_to_api: false,
     },
-    external,
+    source,
   }
 }
