@@ -128,7 +128,7 @@ function withFailedUsage(sidecar: MediaSidecar, config: ApiClientConfig): MediaS
 
 /**
  * Optionally enrich a sidecar with AI analysis.
- * NEVER modifies: external, rights, asset_id.
+ * NEVER modifies: source, rights, asset_id.
  * Fills empty summary/tags fields and appends unique tags.
  * API failure = non-fatal: logs error, returns sidecar as-is with api_usage populated.
  */

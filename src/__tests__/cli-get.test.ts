@@ -83,7 +83,7 @@ describe("runGetCommand", () => {
     const sidecarJson: unknown = JSON.parse(await readFile(sidecarPath, "utf8"))
     const parsed = MediaSidecarSchema.safeParse(sidecarJson)
     expect(parsed.success).toBe(true)
-    expect(parsed.data?.external?.provider).toBe("wikimedia")
+    expect(parsed.data?.source?.provider).toBe("wikimedia")
 
     const rawPath = join(outDir, "wikimedia-File:Test image.jpg-test-image.external.raw.json")
     expect(existsSync(rawPath)).toBe(true)

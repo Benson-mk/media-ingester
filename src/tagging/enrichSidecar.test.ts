@@ -54,7 +54,8 @@ function baseSidecar(overrides: Partial<MediaSidecar> = {}): MediaSidecar {
     quality: { overall_score: 0, reuse_score: 0 },
     rights: { owner: "creator", source: "pexels", license: "CC0", notes: "" },
     api_usage: { provider: "", model: "", media_uploaded_to_api: false },
-    external: {
+    source: {
+      origin: "external",
       provider: "pexels",
       source_id: "123",
       source_url: "https://example.test/p/123",
@@ -115,12 +116,12 @@ test("enrichSidecar treats VLM failure as non-fatal and marks upload false", asy
   expect(result.api_usage.model).toBe("gpt-4o-mini")
 })
 
-test("enrichSidecar never modifies external, rights, or asset_id", async () => {
+test("enrichSidecar never modifies source, rights, or asset_id", async () => {
   const sidecar = baseSidecar()
   const result = await enrichSidecar(sidecar, imagePath, { apiKey: "k", analyze: okAnalyze })
 
   expect(result.asset_id).toBe(sidecar.asset_id)
-  expect(result.external).toEqual(sidecar.external)
+  expect(result.source).toEqual(sidecar.source)
   expect(result.rights).toEqual(sidecar.rights)
 })
 
