@@ -8,6 +8,7 @@ import { buildExternalSidecar } from "../download/buildSidecar"
 import { downloadAsset } from "../download/downloadAsset"
 import { saveRaw } from "../download/saveRaw"
 import type { ProviderItem } from "../providers/types"
+import { enrichSidecar } from "../tagging/enrichSidecar"
 import { parseLimit, parseMediaType, resolveProviders } from "./resolveProviders"
 
 export type GetOptions = {
@@ -19,6 +20,10 @@ export type GetOptions = {
   readonly force?: boolean
   readonly dryRun?: boolean
   readonly output?: string
+  readonly api?: boolean
+  readonly apiKey?: string
+  readonly apiBaseUrl?: string
+  readonly apiModel?: string
 }
 
 function extensionFor(item: ProviderItem): string {
@@ -78,7 +83,15 @@ export async function runGetCommand(query: string, options: GetOptions): Promise
       force: options.force === true,
     })
     const rawPath = rawMetadataPath(result.path)
-    const sidecar = buildExternalSidecar(item, jsonLd, result.path, result.sha256, rawPath)
+    let sidecar = buildExternalSidecar(item, jsonLd, result.path, result.sha256, rawPath)
+
+    if (options.api === true && options.apiKey !== undefined) {
+      sidecar = await enrichSidecar(sidecar, result.path, {
+        apiKey: options.apiKey,
+        ...(options.apiBaseUrl !== undefined ? { apiBaseUrl: options.apiBaseUrl } : {}),
+        ...(options.apiModel !== undefined ? { apiModel: options.apiModel } : {}),
+      })
+    }
 
     await writeJson(sidecarPath(result.path), sidecar)
     await saveRaw(rawPath, item, jsonLd)
