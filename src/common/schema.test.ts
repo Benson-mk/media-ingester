@@ -22,18 +22,18 @@ const baseSidecar = {
 }
 
 describe("MediaSidecarSchema", () => {
-  test("v1.0 sidecar without new blocks parses OK", () => {
+  test("v1.0 sidecar without source block parses OK", () => {
     const result = MediaSidecarSchema.parse({ ...baseSidecar, schema_version: "1.0" })
     expect(result.schema_version).toBe("1.0")
-    expect(result.external).toBeUndefined()
-    expect(result.internal).toBeUndefined()
+    expect(result.source).toBeUndefined()
   })
 
-  test("v1.1 sidecar with external+exif+location parses OK", () => {
+  test("v1.1 sidecar with external source block parses OK", () => {
     const result = MediaSidecarSchema.parse({
       ...baseSidecar,
       schema_version: "1.1",
-      external: {
+      source: {
+        origin: "external",
         provider: "pexels",
         source_id: "12345",
         source_url: "https://pexels.com/photo/12345",
@@ -46,20 +46,39 @@ describe("MediaSidecarSchema", () => {
         exif: { camera: "Canon", iso: 400 },
         location: "Paris, France",
       },
-      internal: { origin: "crawler" },
     })
     expect(result.schema_version).toBe("1.1")
-    expect(result.external?.provider).toBe("pexels")
-    expect(result.external?.exif?.["iso"]).toBe(400)
-    expect(result.external?.location).toBe("Paris, France")
-    expect(result.internal?.origin).toBe("crawler")
+    expect(result.source?.origin).toBe("external")
+    expect(result.source?.provider).toBe("pexels")
+    expect(result.source?.exif?.["iso"]).toBe(400)
+    expect(result.source?.location).toBe("Paris, France")
   })
 
-  test("bad external.provider type (number) rejects", () => {
+  test("local_scan source block with only origin parses OK", () => {
+    const result = MediaSidecarSchema.parse({
+      ...baseSidecar,
+      schema_version: "1.1",
+      source: { origin: "local_scan" },
+    })
+    expect(result.source?.origin).toBe("local_scan")
+    expect(result.source?.provider).toBeUndefined()
+  })
+
+  test("source block without origin rejects", () => {
     const result = MediaSidecarSchema.safeParse({
       ...baseSidecar,
       schema_version: "1.1",
-      external: {
+      source: { provider: "pexels" },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  test("bad source.provider type (number) rejects", () => {
+    const result = MediaSidecarSchema.safeParse({
+      ...baseSidecar,
+      schema_version: "1.1",
+      source: {
+        origin: "external",
         provider: 123,
         source_id: "12345",
         source_url: "u",

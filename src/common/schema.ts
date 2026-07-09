@@ -72,28 +72,29 @@ export const BgmMetaSchema = z.object({
   avoid_use: StringListSchema,
 })
 
-export const ExternalBlockSchema = z.object({
-  provider: z.string(),
-  source_id: z.string(),
-  source_url: z.string(),
-  download_url: z.string(),
-  creator: z.object({
-    name: z.string(),
-    profile_url: z.string(),
-  }),
-  license: z.string(),
-  license_url: z.string(),
-  credits: z.object({
-    required: z.boolean(),
-    text: z.string(),
-  }),
-  raw_metadata_path: z.string(),
+export const SourceBlockSchema = z.object({
+  origin: z.string(),
+  provider: z.string().optional(),
+  source_id: z.string().optional(),
+  source_url: z.string().optional(),
+  download_url: z.string().optional(),
+  creator: z
+    .object({
+      name: z.string(),
+      profile_url: z.string(),
+    })
+    .optional(),
+  license: z.string().optional(),
+  license_url: z.string().optional(),
+  credits: z
+    .object({
+      required: z.boolean(),
+      text: z.string(),
+    })
+    .optional(),
+  raw_metadata_path: z.string().optional(),
   exif: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
   location: z.string().optional(),
-})
-
-export const InternalBlockSchema = z.object({
-  origin: z.string(),
 })
 
 export const MediaSidecarSchema = z.object({
@@ -138,13 +139,11 @@ export const MediaSidecarSchema = z.object({
   image: ImageMetaSchema.optional(),
   video: VideoMetaSchema.optional(),
   bgm: BgmMetaSchema.optional(),
-  external: ExternalBlockSchema.optional(),
-  internal: InternalBlockSchema.optional(),
+  source: SourceBlockSchema.optional(),
 })
 
 export type ImageMeta = z.infer<typeof ImageMetaSchema>
 export type VideoMeta = z.infer<typeof VideoMetaSchema>
 export type BgmMeta = z.infer<typeof BgmMetaSchema>
-export type ExternalBlock = z.infer<typeof ExternalBlockSchema>
-export type InternalBlock = z.infer<typeof InternalBlockSchema>
+export type SourceBlock = z.infer<typeof SourceBlockSchema>
 export type MediaSidecar = z.infer<typeof MediaSidecarSchema>
