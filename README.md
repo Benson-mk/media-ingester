@@ -106,8 +106,8 @@ Per downloaded asset:
 
 ## Schema
 
-Sidecars use `schema_version: "1.1"`, compatible with media-tagger v1.1. Fields include `external.source`, `external.credits`, `external.license`, `tags`, `description`, and technical metadata.
+Sidecars use `schema_version: "1.1"`, compatible with media-tagger v1.1. Fields include `source.origin`, `source.credits`, `source.license`, `tags`, `description`, and technical metadata.
 
 ## Rights & Attribution
 
-Verify the license before publishing. Pexels requires a link to the photographer and to pexels.com. Wikimedia Commons licenses vary per file; check `external.license` in the sidecar.
+Verify the license before publishing. Pexels requires a link to the photographer and to pexels.com. Wikimedia Commons licenses vary per file; check `source.license` in the sidecar.

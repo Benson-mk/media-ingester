@@ -56,7 +56,7 @@ Video enrichment requires ffmpeg to extract frames. Audio enrichment needs an au
 ## Rights & Attribution
 
 - Verify the license before publishing any downloaded asset. Pexels licenses allow free use with attribution; Wikimedia Commons licenses vary per file.
-- `external.credits` in each sidecar contains the photographer name and source URL.
+- `source.credits` in each sidecar contains the photographer name and source URL.
 - Pexels requires a link to the photographer and to pexels.com when publishing.
 - Tags from Wikimedia are scraped from page JSON-LD; that source may change or be absent.
 
