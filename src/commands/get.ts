@@ -1,4 +1,6 @@
 import { join } from "node:path"
+import { detectMediaType } from "../common/detectMediaType"
+import { logger } from "../common/logger"
 import { rawMetadataPath, sidecarPath } from "../common/paths"
 import { assetFilename } from "../common/safeFilename"
 import { writeJson } from "../common/writeJson"
@@ -82,6 +84,14 @@ export async function runGetCommand(query: string, options: GetOptions): Promise
     const result = await downloadAsset(item.download_url, outDir, filename, {
       force: options.force === true,
     })
+    const detectedType = detectMediaType(result.path)
+    if (detectedType !== null && detectedType !== item.media_type) {
+      logger.warn("media type mismatch: detected different type from file extension", {
+        expected: item.media_type,
+        detected: detectedType,
+        file: result.path,
+      })
+    }
     const rawPath = rawMetadataPath(result.path)
     let sidecar = buildExternalSidecar(item, jsonLd, result.path, result.sha256, rawPath)
 

@@ -5,6 +5,7 @@ import { z } from "zod"
 
 import { logger } from "../common/logger"
 import type { MediaSidecar } from "../common/schema"
+import { analyzeAudio } from "../llm/audioClient"
 import { type ApiClientConfig, analyzeImage, type ImageInput } from "../llm/vlmClient"
 
 export type EnrichOptions = {
@@ -14,6 +15,7 @@ export type EnrichOptions = {
   // ponytail: injectable VLM call for tests; defaults to real analyzeImage.
   // Upgrade path: drop when a shared HTTP-mock harness lands.
   readonly analyze?: typeof analyzeImage
+  readonly analyzeAudio?: typeof analyzeAudio
 }
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1"
@@ -29,6 +31,8 @@ const ImageResultSchema = z.object({
   short_caption: z.string(),
   tags: z.array(z.string()),
 })
+
+const AudioResultSchema = z.object({}).passthrough()
 
 type ImageResult = z.infer<typeof ImageResultSchema>
 
@@ -52,9 +56,23 @@ function mimeFor(localPath: string): string {
   return "image/jpeg"
 }
 
+function audioMimeFor(localPath: string): string {
+  const ext = extname(localPath).toLowerCase().replace(".", "")
+  if (ext === "mp3" || ext === "mpeg") return "audio/mpeg"
+  return "audio/mpeg"
+}
+
 async function imageInput(localPath: string): Promise<ImageInput> {
   const bytes = await readFile(localPath)
   const dataUrl = `data:${mimeFor(localPath)};base64,${bytes.toString("base64")}`
+  return { kind: "data_url", data_url: dataUrl }
+}
+
+async function audioInput(
+  localPath: string,
+): Promise<{ readonly kind: "data_url"; readonly data_url: string }> {
+  const bytes = await readFile(localPath)
+  const dataUrl = `data:${audioMimeFor(localPath)};base64,${bytes.toString("base64")}`
   return { kind: "data_url", data_url: dataUrl }
 }
 
@@ -121,6 +139,21 @@ export async function enrichSidecar(
 ): Promise<MediaSidecar> {
   const config = resolveConfig(options)
   const analyze = options.analyze ?? analyzeImage
+  const analyzeAudioImpl = options.analyzeAudio ?? analyzeAudio
+
+  if (sidecar.media_type === "audio") {
+    try {
+      await analyzeAudioImpl({
+        ...config,
+        audio: await audioInput(localPath),
+        prompt: "Extract concise audio metadata.",
+        schema: AudioResultSchema,
+      })
+    } catch (error) {
+      logger.error(error instanceof Error ? error.message : "audio enrichment failed")
+    }
+    return withFailedUsage(sidecar, config)
+  }
 
   if (sidecar.media_type !== "image") {
     logger.warn("video/audio enrichment requires ffmpeg", { media_type: sidecar.media_type })

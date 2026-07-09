@@ -1,5 +1,5 @@
 import { basename } from "node:path"
-
+import { parseIsoDuration } from "../common/parseIsoDuration"
 import type { ExternalBlock, MediaSidecar } from "../common/schema"
 import type { PexelsJsonLd } from "../crawl/extractJsonLd"
 import type { ProviderItem } from "../providers/types"
@@ -35,11 +35,20 @@ function buildCoreTags(item: ProviderItem, jsonLd: PexelsJsonLd | null): string[
   return out
 }
 
-function buildTechnical(item: ProviderItem): Record<string, string | number | boolean | null> {
-  const technical: Record<string, string | number | boolean | null> = {}
-  if (item.width !== undefined) technical["width"] = item.width
-  if (item.height !== undefined) technical["height"] = item.height
-  if (item.duration_seconds !== undefined) technical["duration_seconds"] = item.duration_seconds
+function buildTechnical(
+  item: ProviderItem,
+  jsonLd: PexelsJsonLd | null,
+): Record<string, string | number | boolean | null> {
+  const duration =
+    jsonLd?.duration !== undefined ? parseIsoDuration(jsonLd.duration) : item.duration_seconds
+  const technical: {
+    width?: number
+    height?: number
+    duration_seconds?: number
+  } = {}
+  if (item.width !== undefined) technical.width = item.width
+  if (item.height !== undefined) technical.height = item.height
+  if (duration !== undefined) technical.duration_seconds = duration
   return technical
 }
 
@@ -90,7 +99,7 @@ export function buildExternalSidecar(
     media_type: item.media_type,
     created_at: now,
     updated_at: now,
-    technical: buildTechnical(item),
+    technical: buildTechnical(item, jsonLd),
     summary: {
       title: item.title || (jsonLd?.description?.slice(0, 100) ?? ""),
       short_caption: jsonLd?.description ?? item.description,

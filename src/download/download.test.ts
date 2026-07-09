@@ -132,6 +132,17 @@ test("buildExternalSidecar video: no exif, no location, video credits label", ()
   expect(result.success).toBe(true)
 })
 
+test("buildExternalSidecar prefers jsonLd duration over api duration_seconds", () => {
+  const item = { ...makeVideoItem(), duration_seconds: 30 }
+  const jsonLd: PexelsJsonLd = {
+    description: "Waves crashing on shore",
+    duration: "P0Y0M0DT0H0M5S",
+  }
+  const sidecar = buildExternalSidecar(item, jsonLd, "/tmp/pexels-67890.mp4", "vid2", "/tmp/r.json")
+
+  expect(sidecar.technical["duration_seconds"]).toBe(5)
+})
+
 test("buildExternalSidecar wikimedia: no jsonLd, tags from api_tags, no exif/location", () => {
   const item = makeWikimediaItem()
   const sidecar = buildExternalSidecar(item, null, "/tmp/wikimedia-x.jpg", "wiki1", "/tmp/r.json")

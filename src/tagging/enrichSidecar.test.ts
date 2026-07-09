@@ -5,7 +5,9 @@ import { join } from "node:path"
 
 import type { MediaSidecar } from "../common/schema"
 import type { analyzeImage } from "../llm/vlmClient"
-import { enrichSidecar } from "./enrichSidecar"
+import { type EnrichOptions, enrichSidecar } from "./enrichSidecar"
+
+const envKeys = ["MEDIA_INGEST_API_KEY", "MEDIA_INGEST_BASE_URL", "MEDIA_INGEST_MODEL"] as const
 
 const originalEnv = process.env
 let workDir = ""
@@ -13,9 +15,7 @@ let imagePath = ""
 
 beforeEach(async () => {
   process.env = { ...originalEnv }
-  delete process.env["MEDIA_INGEST_API_KEY"]
-  delete process.env["MEDIA_INGEST_BASE_URL"]
-  delete process.env["MEDIA_INGEST_MODEL"]
+  for (const key of envKeys) delete process.env[key]
   workDir = await mkdtemp(join(tmpdir(), "enrich-"))
   imagePath = join(workDir, "photo.jpg")
   await writeFile(imagePath, Buffer.from("fake-jpeg-bytes"))
@@ -152,5 +152,24 @@ test("enrichSidecar stubs video enrichment with warning and no upload", async ()
   const result = await enrichSidecar(sidecar, imagePath, { apiKey: "k", analyze: okAnalyze })
 
   expect(result.summary.title).toBe("")
+  expect(result.api_usage.media_uploaded_to_api).toBe(false)
+})
+
+test("enrichSidecar audio branch calls analyzeAudio and swallows errors", async () => {
+  const sidecar = baseSidecar({ media_type: "audio" })
+  const calls: Array<{ readonly prompt: string }> = []
+  const spy: NonNullable<EnrichOptions["analyzeAudio"]> = async (options) => {
+    calls.push({ prompt: options.prompt })
+    throw new Error("boom")
+  }
+
+  const result = await enrichSidecar(sidecar, imagePath, {
+    apiKey: "k",
+    analyze: okAnalyze,
+    analyzeAudio: spy,
+  })
+
+  expect(calls).toHaveLength(1)
+  expect(calls[0]?.prompt).toBe("Extract concise audio metadata.")
   expect(result.api_usage.media_uploaded_to_api).toBe(false)
 })
