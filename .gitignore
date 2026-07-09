@@ -1,0 +1,11 @@
+node_modules/
+.env
+dist/
+.media_cache/
+*.media.json
+media_manifest.jsonl
+.omo/
+.codegraph/
+docs/
+ChatGPT-*.md
+.DS_Store
