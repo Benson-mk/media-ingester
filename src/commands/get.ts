@@ -1,14 +1,13 @@
 import { join } from "node:path"
 import { detectMediaType } from "../common/detectMediaType"
 import { logger } from "../common/logger"
-import { rawMetadataPath, sidecarPath } from "../common/paths"
+import { sidecarPath } from "../common/paths"
 import { assetFilename } from "../common/safeFilename"
 import { writeJson } from "../common/writeJson"
 import { updateManifestLine } from "../common/writeJsonl"
 import { fetchPexelsJsonLd } from "../crawl/extractJsonLd"
 import { buildExternalSidecar } from "../download/buildSidecar"
 import { downloadAsset } from "../download/downloadAsset"
-import { saveRaw } from "../download/saveRaw"
 import type { ProviderItem } from "../providers/types"
 import { enrichSidecar } from "../tagging/enrichSidecar"
 import { parseLimit, parseMediaType, resolveProviders } from "./resolveProviders"
@@ -92,8 +91,7 @@ export async function runGetCommand(query: string, options: GetOptions): Promise
         file: result.path,
       })
     }
-    const rawPath = rawMetadataPath(result.path)
-    let sidecar = buildExternalSidecar(item, jsonLd, result.path, result.sha256, rawPath)
+    let sidecar = buildExternalSidecar(item, jsonLd, result.path, result.sha256)
 
     if (options.api === true && options.apiKey !== undefined) {
       sidecar = await enrichSidecar(sidecar, result.path, {
@@ -104,7 +102,6 @@ export async function runGetCommand(query: string, options: GetOptions): Promise
     }
 
     await writeJson(sidecarPath(result.path), sidecar)
-    await saveRaw(rawPath, item, jsonLd)
     await updateManifestLine(manifestFilePath, sidecar.asset_id, sidecar)
 
     console.log(`Downloaded: ${result.path}`)

@@ -52,12 +52,26 @@ function buildTechnical(
   return technical
 }
 
+const PEXELS_EXIF_NAME_MAP: Record<string, string> = {
+  Camera: "Model",
+  Make: "Make",
+  "Focal length": "FocalLength",
+  Aperture: "FNumber",
+  "Exposure time": "ExposureTime",
+  ISO: "ISO",
+  Photographed: "DateTimeOriginal",
+}
+
+const NUMERIC_EXIF_KEYS = new Set(["FocalLength", "FNumber", "ExposureTime", "ISO"])
+
 function buildExif(jsonLd: PexelsJsonLd | null): Record<string, string | number> | undefined {
   const exifData = jsonLd?.exifData
   if (exifData === undefined || exifData.length === 0) return undefined
   const exif: Record<string, string | number> = {}
   for (const { name, value } of exifData) {
-    exif[name] = value
+    const key = PEXELS_EXIF_NAME_MAP[name] ?? name
+    const numeric = typeof value === "string" ? Number(value) : value
+    exif[key] = NUMERIC_EXIF_KEYS.has(key) && Number.isFinite(numeric) ? numeric : value
   }
   return exif
 }
@@ -67,7 +81,6 @@ export function buildExternalSidecar(
   jsonLd: PexelsJsonLd | null,
   localPath: string,
   sha256: string,
-  rawPath: string,
 ): MediaSidecar {
   const now = new Date().toISOString()
   const creditsText = `${mediaTypeLabel(item.media_type)} by ${item.creator.name} on ${providerLabel(item.provider)}: ${item.source_url}`
@@ -85,7 +98,7 @@ export function buildExternalSidecar(
       required: false,
       text: creditsText,
     },
-    raw_metadata_path: rawPath,
+    raw: { api: item.raw, json_ld: jsonLd },
   }
 
   const exif = buildExif(jsonLd)

@@ -84,9 +84,10 @@ describe("runGetCommand", () => {
     const parsed = MediaSidecarSchema.safeParse(sidecarJson)
     expect(parsed.success).toBe(true)
     expect(parsed.data?.source?.provider).toBe("wikimedia")
+    expect(parsed.data?.source?.raw?.api).toBeDefined()
 
     const rawPath = join(outDir, "wikimedia-File:Test image.jpg-test-image.external.raw.json")
-    expect(existsSync(rawPath)).toBe(true)
+    expect(existsSync(rawPath)).toBe(false)
 
     const manifestPath = join(outDir, "media_manifest.jsonl")
     expect(existsSync(manifestPath)).toBe(true)

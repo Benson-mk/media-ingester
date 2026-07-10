@@ -3,13 +3,12 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { rawMetadataPath, sidecarPath } from "../common/paths"
+import { sidecarPath } from "../common/paths"
 import { MediaSidecarSchema } from "../common/schema"
 import type { PexelsJsonLd } from "../crawl/extractJsonLd"
 import type { ProviderItem } from "../providers/types"
 import { buildExternalSidecar } from "./buildSidecar"
 import { downloadAsset } from "./downloadAsset"
-import { saveRaw } from "./saveRaw"
 
 const originalFetch = global.fetch
 
@@ -90,15 +89,27 @@ test("buildExternalSidecar photo: exif + location + core tags, validates schema"
     description: "A stunning mountain at sunset",
     contentLocation: { name: "Swiss Alps" },
     exifData: [
-      { name: "iso", value: 100 },
-      { name: "camera", value: "Canon EOS" },
+      { name: "Camera", value: "Canon EOS" },
+      { name: "Make", value: "Canon" },
+      { name: "Focal length", value: "60.0" },
+      { name: "Aperture", value: "2.8" },
+      { name: "Exposure time", value: "0.003125" },
+      { name: "ISO", value: 100 },
+      { name: "Photographed", value: "2022-12-12T11:22:44.000Z" },
     ],
   }
-  const rawPath = "/tmp/x.external.raw.json"
-  const sidecar = buildExternalSidecar(item, jsonLd, "/tmp/pexels-12345.jpg", "abc123", rawPath)
+  const sidecar = buildExternalSidecar(item, jsonLd, "/tmp/pexels-12345.jpg", "abc123")
 
   expect(sidecar.source?.origin).toBe("external")
-  expect(sidecar.source?.exif).toEqual({ iso: 100, camera: "Canon EOS" })
+  expect(sidecar.source?.exif).toEqual({
+    Model: "Canon EOS",
+    Make: "Canon",
+    FocalLength: 60,
+    FNumber: 2.8,
+    ExposureTime: 0.003125,
+    ISO: 100,
+    DateTimeOriginal: "2022-12-12T11:22:44.000Z",
+  })
   expect(sidecar.source?.location).toBe("Swiss Alps")
   expect(sidecar.tags.core.length).toBeGreaterThanOrEqual(20)
   expect(sidecar.tags.core).toContain("mountain")
@@ -106,7 +117,7 @@ test("buildExternalSidecar photo: exif + location + core tags, validates schema"
     "Photo by Jane Doe on Pexels: https://www.pexels.com/photo/12345/",
   )
   expect(sidecar.asset_id).toBe("sha256:abc123")
-  expect(sidecar.source?.raw_metadata_path).toBe(rawPath)
+  expect(sidecar.source?.raw).toEqual({ api: { id: 12345 }, json_ld: jsonLd })
 
   const result = MediaSidecarSchema.safeParse(sidecar)
   expect(result.success).toBe(true)
@@ -118,7 +129,7 @@ test("buildExternalSidecar video: no exif, no location, video credits label", ()
     keywords: "Ocean, Waves, Water",
     description: "Waves crashing on shore",
   }
-  const sidecar = buildExternalSidecar(item, jsonLd, "/tmp/pexels-67890.mp4", "vid1", "/tmp/r.json")
+  const sidecar = buildExternalSidecar(item, jsonLd, "/tmp/pexels-67890.mp4", "vid1")
 
   expect(sidecar.source?.exif).toBeUndefined()
   expect(sidecar.source?.location).toBeUndefined()
@@ -139,17 +150,18 @@ test("buildExternalSidecar prefers jsonLd duration over api duration_seconds", (
     description: "Waves crashing on shore",
     duration: "P0Y0M0DT0H0M5S",
   }
-  const sidecar = buildExternalSidecar(item, jsonLd, "/tmp/pexels-67890.mp4", "vid2", "/tmp/r.json")
+  const sidecar = buildExternalSidecar(item, jsonLd, "/tmp/pexels-67890.mp4", "vid2")
 
   expect(sidecar.technical["duration_seconds"]).toBe(5)
 })
 
 test("buildExternalSidecar wikimedia: no jsonLd, tags from api_tags, no exif/location", () => {
   const item = makeWikimediaItem()
-  const sidecar = buildExternalSidecar(item, null, "/tmp/wikimedia-x.jpg", "wiki1", "/tmp/r.json")
+  const sidecar = buildExternalSidecar(item, null, "/tmp/wikimedia-x.jpg", "wiki1")
 
   expect(sidecar.source?.exif).toBeUndefined()
   expect(sidecar.source?.location).toBeUndefined()
+  expect(sidecar.source?.raw).toEqual({ api: { pageid: 999 }, json_ld: null })
   expect(sidecar.tags.core).toEqual(["landmark", "history"])
   expect(sidecar.source?.credits?.text).toBe(
     "Photo by Some Author on Wikimedia: https://commons.wikimedia.org/wiki/File:Example.jpg",
@@ -218,16 +230,3 @@ test("downloadAsset skip-existing: returns early without fetching", async () => 
   expect(fetchSpy).not.toHaveBeenCalled()
 })
 
-test("saveRaw: writes api + json_ld to rawPath", async () => {
-  const item = makePhotoItem()
-  const jsonLd: PexelsJsonLd = { description: "hi" }
-  const mediaPath = join(workDir, "media.jpg")
-  const rawPath = rawMetadataPath(mediaPath)
-
-  await saveRaw(rawPath, item, jsonLd)
-
-  expect(existsSync(rawPath)).toBe(true)
-  const written = (await Bun.file(rawPath).json()) as { api: unknown; json_ld: unknown }
-  expect(written.api).toEqual({ id: 12345 })
-  expect(written.json_ld).toEqual({ description: "hi" })
-})
