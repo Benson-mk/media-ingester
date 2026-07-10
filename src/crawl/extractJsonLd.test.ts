@@ -46,6 +46,20 @@ test("video fixture: keywords + duration, no exif, no contentLocation", async ()
   expect(result?.contentLocation).toBeUndefined()
 })
 
+test("photo page with data-next-head ld+json script: extracts keywords", async () => {
+  const html = `<html><head><script type="application/ld+json" data-next-head="">{"@context":"https://schema.org","@type":"ImageObject","keywords":"Computer Setup, Creative Workspace, Desk","description":"Desk setup"}</script></head></html>`
+  const fetchMock: typeof fetch = Object.assign(() => Promise.resolve(htmlResponse(html)), {
+    preconnect: () => {},
+  })
+  global.fetch = fetchMock
+
+  const result = await fetchPexelsJsonLd(
+    "https://www.pexels.com/photo/camera-on-monitor-screen-17112932/",
+  )
+
+  expect(result?.keywords).toBe("Computer Setup, Creative Workspace, Desk")
+})
+
 test("403 response returns null without throwing", async () => {
   global.fetch = mock(() =>
     Promise.resolve(new Response("", { status: 403 })),

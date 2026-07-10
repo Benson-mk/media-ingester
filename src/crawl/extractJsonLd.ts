@@ -26,27 +26,22 @@ type RawBlock = {
 type RawNamed = { name?: unknown; url?: unknown; value?: unknown }
 
 const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
-const SCRIPT_OPEN = '<script type="application/ld+json">'
-const SCRIPT_CLOSE = "</script>"
+const JSON_LD_SCRIPT =
+  /<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>([\s\S]*?)<\/script>/gi
 
 function parseLdJsonBlocks(html: string): RawBlock[] {
   const blocks: RawBlock[] = []
-  let pos = 0
-  while (true) {
-    const start = html.indexOf(SCRIPT_OPEN, pos)
-    if (start === -1) break
-    const contentStart = html.indexOf(">", start) + 1
-    const contentEnd = html.indexOf(SCRIPT_CLOSE, contentStart)
-    if (contentEnd === -1) break
+  for (const match of html.matchAll(JSON_LD_SCRIPT)) {
+    const content = match[1]
+    if (content === undefined) continue
     try {
-      const parsed: unknown = JSON.parse(html.slice(contentStart, contentEnd))
+      const parsed: unknown = JSON.parse(content)
       if (typeof parsed === "object" && parsed !== null) {
         blocks.push(parsed as RawBlock)
       }
     } catch {
       // skip malformed block
     }
-    pos = contentEnd + SCRIPT_CLOSE.length
   }
   return blocks
 }
