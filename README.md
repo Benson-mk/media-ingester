@@ -100,8 +100,7 @@ Do not enable `--api` for private, sensitive, or confidential media. Offline mod
 Per downloaded asset:
 
 - `<filename>` — the media file itself
-- `<filename>.media.json` — sidecar with metadata, tags, credits, and license info (media-tagger v1.1 schema)
-- `<name>.external.raw.json` — raw API response from the provider
+- `<filename>.media.json` — sidecar with metadata, tags, credits, license info, and raw provider response under `source.raw` (media-tagger v1.1 schema)
 - `media_manifest.jsonl` — one JSON line per asset, appended on each run
 
 ## Schema
