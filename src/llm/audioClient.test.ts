@@ -10,14 +10,14 @@ const ResultSchema = z.object({
 const originalEnv = process.env
 
 beforeEach(() => {
-  process.env = { ...originalEnv, MEDIA_INGEST_AUDIO_MODEL: "gemini/gemini-3-flash-preview" }
+  process.env = { ...originalEnv }
 })
 
 afterEach(() => {
   process.env = originalEnv
 })
 
-test("analyzeAudio sends input_audio chat request using MEDIA_INGEST_AUDIO_MODEL", async () => {
+test("analyzeAudio sends input_audio chat request using options.model", async () => {
   const requests: Array<{ readonly path: string; readonly body: unknown }> = []
   const server = Bun.serve({
     port: 0,
@@ -33,7 +33,7 @@ test("analyzeAudio sends input_audio chat request using MEDIA_INGEST_AUDIO_MODEL
     const result = await analyzeAudio({
       api: true,
       base_url: server.url.href,
-      model: "cx/gpt-5.5",
+      model: "gemini/gemini-3-flash-preview",
       api_key: "test-key",
       audio: { kind: "data_url", data_url: "data:audio/mpeg;base64,QUJD" },
       prompt: "tag audio",
@@ -64,7 +64,7 @@ test("analyzeAudio sends input_audio chat request using MEDIA_INGEST_AUDIO_MODEL
   }
 })
 
-test("analyzeAudio sends request to MEDIA_INGEST_AUDIO_BASE_URL when set", async () => {
+test("analyzeAudio sends request to options.base_url", async () => {
   const paths: string[] = []
   const server = Bun.serve({
     port: 0,
@@ -74,17 +74,12 @@ test("analyzeAudio sends request to MEDIA_INGEST_AUDIO_BASE_URL when set", async
       return Response.json({ choices: [{ message: { content: '{"title":"routed"}' } }] })
     },
   })
-  process.env = {
-    ...originalEnv,
-    MEDIA_INGEST_AUDIO_MODEL: "gemini/gemini-3-flash-preview",
-    MEDIA_INGEST_AUDIO_BASE_URL: `${server.url.href}audio-gateway/v1`,
-  }
 
   try {
     const result = await analyzeAudio({
       api: true,
-      base_url: "http://unused.invalid/v1",
-      model: "cx/gpt-5.5",
+      base_url: `${server.url.href}audio-gateway/v1`,
+      model: "gemini/gemini-3-flash-preview",
       api_key: "test-key",
       audio: { kind: "data_url", data_url: "data:audio/mpeg;base64,QUJD" },
       prompt: "tag audio",
@@ -98,7 +93,7 @@ test("analyzeAudio sends request to MEDIA_INGEST_AUDIO_BASE_URL when set", async
   }
 })
 
-test("analyzeAudio uses MEDIA_INGEST_AUDIO_API_KEY when set", async () => {
+test("analyzeAudio uses options.api_key", async () => {
   const authorizations: Array<string | null> = []
   const server = Bun.serve({
     port: 0,
@@ -108,18 +103,13 @@ test("analyzeAudio uses MEDIA_INGEST_AUDIO_API_KEY when set", async () => {
       return Response.json({ choices: [{ message: { content: '{"title":"keyed"}' } }] })
     },
   })
-  process.env = {
-    ...originalEnv,
-    MEDIA_INGEST_AUDIO_MODEL: "gemini/gemini-3-flash-preview",
-    MEDIA_INGEST_AUDIO_API_KEY: "audio-key",
-  }
 
   try {
     const result = await analyzeAudio({
       api: true,
       base_url: server.url.href,
-      model: "cx/gpt-5.5",
-      api_key: "default-key",
+      model: "gemini/gemini-3-flash-preview",
+      api_key: "audio-key",
       audio: { kind: "data_url", data_url: "data:audio/mpeg;base64,QUJD" },
       prompt: "tag audio",
       schema: ResultSchema,
@@ -132,16 +122,15 @@ test("analyzeAudio uses MEDIA_INGEST_AUDIO_API_KEY when set", async () => {
   }
 })
 
-test("analyzeAudio falls back to config model without MEDIA_INGEST_AUDIO_MODEL", async () => {
-  const { MEDIA_INGEST_AUDIO_MODEL: _unused, ...envWithoutAudioModel } = originalEnv
-  process.env = { ...envWithoutAudioModel }
-  const models: string[] = []
+test("analyzeAudio falls back to MEDIA_INGEST_API_KEY when options.api_key is undefined", async () => {
+  process.env = { ...originalEnv, MEDIA_INGEST_API_KEY: "env-fallback-key" }
+  const authorizations: Array<string | null> = []
   const server = Bun.serve({
     port: 0,
     async fetch(request) {
-      const body = (await request.json()) as { model: string }
-      models.push(body.model)
-      return Response.json({ choices: [{ message: { content: '{"title":"plain"}' } }] })
+      await request.json()
+      authorizations.push(request.headers.get("authorization"))
+      return Response.json({ choices: [{ message: { content: '{"title":"fallback"}' } }] })
     },
   })
 
@@ -149,15 +138,14 @@ test("analyzeAudio falls back to config model without MEDIA_INGEST_AUDIO_MODEL",
     const result = await analyzeAudio({
       api: true,
       base_url: server.url.href,
-      model: "cx/gpt-5.5",
-      api_key: "test-key",
+      model: "gemini/gemini-3-flash-preview",
       audio: { kind: "data_url", data_url: "data:audio/mpeg;base64,QUJD" },
       prompt: "tag audio",
       schema: ResultSchema,
     })
 
-    expect(result).toEqual({ title: "plain" })
-    expect(models).toEqual(["cx/gpt-5.5"])
+    expect(result).toEqual({ title: "fallback" })
+    expect(authorizations).toEqual(["Bearer env-fallback-key"])
   } finally {
     server.stop(true)
   }

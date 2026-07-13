@@ -27,19 +27,14 @@ export async function analyzeAudio<T>(options: AudioAnalysisOptions<T>): Promise
     return null
   }
 
-  const {
-    MEDIA_INGEST_API_KEY,
-    MEDIA_INGEST_AUDIO_MODEL,
-    MEDIA_INGEST_AUDIO_BASE_URL,
-    MEDIA_INGEST_AUDIO_API_KEY,
-  } = process.env
-  const apiKey = MEDIA_INGEST_AUDIO_API_KEY ?? options.api_key ?? MEDIA_INGEST_API_KEY
+  const { MEDIA_INGEST_API_KEY } = process.env
+  const apiKey = options.api_key ?? MEDIA_INGEST_API_KEY
   if (apiKey === undefined || apiKey.length === 0) {
     throw new ApiClientError(401, "API key missing")
   }
 
-  const model = MEDIA_INGEST_AUDIO_MODEL ?? options.model
-  const baseUrl = MEDIA_INGEST_AUDIO_BASE_URL ?? options.base_url
+  const model = options.model
+  const baseUrl = options.base_url
   const response = await fetch(chatCompletionsUrl(baseUrl), {
     method: "POST",
     headers: {
