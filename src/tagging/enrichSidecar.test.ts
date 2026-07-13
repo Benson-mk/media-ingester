@@ -7,7 +7,17 @@ import type { MediaSidecar } from "../common/schema"
 import type { analyzeImage } from "../llm/vlmClient"
 import { type EnrichOptions, enrichSidecar } from "./enrichSidecar"
 
-const envKeys = ["MEDIA_INGEST_API_KEY", "MEDIA_INGEST_BASE_URL", "MEDIA_INGEST_MODEL"] as const
+const envKeys = [
+  "MEDIA_INGEST_API_KEY",
+  "MEDIA_INGEST_BASE_URL",
+  "MEDIA_INGEST_MODEL",
+  "MEDIA_INGEST_VLM_BASE_URL",
+  "MEDIA_INGEST_VLM_MODEL",
+  "MEDIA_INGEST_VLM_API_KEY",
+  "MEDIA_INGEST_AUDIO_BASE_URL",
+  "MEDIA_INGEST_AUDIO_MODEL",
+  "MEDIA_INGEST_AUDIO_API_KEY",
+] as const
 
 const originalEnv = process.env
 let workDir = ""
@@ -173,4 +183,145 @@ test("enrichSidecar audio branch calls analyzeAudio and swallows errors", async 
   expect(calls).toHaveLength(1)
   expect(calls[0]?.prompt).toBe("Extract concise audio metadata.")
   expect(result.api_usage.media_uploaded_to_api).toBe(false)
+})
+
+type CapturedConfig = { base_url: string; model: string; api_key: string | undefined }
+
+function captureImage(sink: { config?: CapturedConfig }): typeof analyzeImage {
+  return async (opts) => {
+    sink.config = { base_url: opts.base_url, model: opts.model, api_key: opts.api_key }
+    return { title: "T", short_caption: "C", tags: [] } as never
+  }
+}
+
+function captureAudio(
+  sink: { config?: CapturedConfig },
+  behavior: "ok" | "throw" = "ok",
+): NonNullable<EnrichOptions["analyzeAudio"]> {
+  return async (opts) => {
+    sink.config = { base_url: opts.base_url, model: opts.model, api_key: opts.api_key }
+    if (behavior === "throw") throw new Error("boom")
+    return null as never
+  }
+}
+
+test("enrichSidecar image uses VLM model and inherits base url/key", async () => {
+  process.env["MEDIA_INGEST_API_KEY"] = "base-key"
+  process.env["MEDIA_INGEST_VLM_MODEL"] = "vlm-model"
+
+  const sink: { config?: CapturedConfig } = {}
+  const result = await enrichSidecar(baseSidecar(), imagePath, { analyze: captureImage(sink) })
+
+  expect(sink.config?.model).toBe("vlm-model")
+  expect(sink.config?.base_url).toBe("https://api.openai.com/v1")
+  expect(sink.config?.api_key).toBe("base-key")
+  expect(result.api_usage.model).toBe("vlm-model")
+})
+
+test("enrichSidecar image without VLM tier uses base model", async () => {
+  process.env["MEDIA_INGEST_API_KEY"] = "base-key"
+  process.env["MEDIA_INGEST_MODEL"] = "base-model"
+
+  const sink: { config?: CapturedConfig } = {}
+  await enrichSidecar(baseSidecar(), imagePath, { analyze: captureImage(sink) })
+
+  expect(sink.config?.model).toBe("base-model")
+})
+
+test("enrichSidecar audio uses full audio tier config", async () => {
+  process.env["MEDIA_INGEST_API_KEY"] = "base-key"
+  process.env["MEDIA_INGEST_VLM_MODEL"] = "vlm-model"
+  process.env["MEDIA_INGEST_VLM_BASE_URL"] = "https://vlm.example/v1"
+  process.env["MEDIA_INGEST_AUDIO_MODEL"] = "audio-model"
+  process.env["MEDIA_INGEST_AUDIO_BASE_URL"] = "https://audio.example/v1"
+  process.env["MEDIA_INGEST_AUDIO_API_KEY"] = "audio-key"
+
+  const sink: { config?: CapturedConfig } = {}
+  const result = await enrichSidecar(baseSidecar({ media_type: "audio" }), imagePath, {
+    analyzeAudio: captureAudio(sink),
+  })
+
+  expect(sink.config?.model).toBe("audio-model")
+  expect(sink.config?.base_url).toBe("https://audio.example/v1")
+  expect(sink.config?.api_key).toBe("audio-key")
+  expect(result.api_usage.provider).toBe("https://audio.example/v1")
+})
+
+test("enrichSidecar audio inherits VLM tier when audio tier unset", async () => {
+  process.env["MEDIA_INGEST_API_KEY"] = "base-key"
+  process.env["MEDIA_INGEST_VLM_MODEL"] = "vlm-model"
+  process.env["MEDIA_INGEST_VLM_BASE_URL"] = "https://vlm.example/v1"
+
+  const sink: { config?: CapturedConfig } = {}
+  await enrichSidecar(baseSidecar({ media_type: "audio" }), imagePath, {
+    analyzeAudio: captureAudio(sink),
+  })
+
+  expect(sink.config?.model).toBe("vlm-model")
+  expect(sink.config?.base_url).toBe("https://vlm.example/v1")
+  expect(sink.config?.api_key).toBe("base-key")
+})
+
+test("enrichSidecar audio uses base config when no tiers set", async () => {
+  process.env["MEDIA_INGEST_API_KEY"] = "base-key"
+  process.env["MEDIA_INGEST_BASE_URL"] = "https://base.example/v1"
+
+  const sink: { config?: CapturedConfig } = {}
+  await enrichSidecar(baseSidecar({ media_type: "audio" }), imagePath, {
+    analyzeAudio: captureAudio(sink),
+  })
+
+  expect(sink.config?.base_url).toBe("https://base.example/v1")
+  expect(sink.config?.api_key).toBe("base-key")
+})
+
+test("enrichSidecar audio activates tier from API_KEY alone", async () => {
+  process.env["MEDIA_INGEST_API_KEY"] = "base-key"
+  process.env["MEDIA_INGEST_AUDIO_API_KEY"] = "audio-key"
+
+  const sink: { config?: CapturedConfig } = {}
+  await enrichSidecar(baseSidecar({ media_type: "audio" }), imagePath, {
+    analyzeAudio: captureAudio(sink),
+  })
+
+  expect(sink.config?.api_key).toBe("audio-key")
+  expect(sink.config?.model).toBe("gpt-4o-mini")
+  expect(sink.config?.base_url).toBe("https://api.openai.com/v1")
+})
+
+test("enrichSidecar audio failure records audio-resolved config", async () => {
+  process.env["MEDIA_INGEST_AUDIO_BASE_URL"] = "https://audio.example/v1"
+  process.env["MEDIA_INGEST_AUDIO_MODEL"] = "audio-model"
+  process.env["MEDIA_INGEST_API_KEY"] = "base-key"
+
+  const sink: { config?: CapturedConfig } = {}
+  const result = await enrichSidecar(baseSidecar({ media_type: "audio" }), imagePath, {
+    analyzeAudio: captureAudio(sink, "throw"),
+  })
+
+  expect(result.api_usage.provider).toContain("https://audio.example/v1")
+  expect(result.api_usage.model).toBe("audio-model")
+})
+
+test("enrichSidecar video api_usage reflects VLM tier", async () => {
+  process.env["MEDIA_INGEST_API_KEY"] = "base-key"
+  process.env["MEDIA_INGEST_VLM_MODEL"] = "vlm-model"
+  process.env["MEDIA_INGEST_VLM_BASE_URL"] = "https://vlm.example/v1"
+
+  const result = await enrichSidecar(baseSidecar({ media_type: "video" }), imagePath, {
+    analyze: okAnalyze,
+  })
+
+  expect(result.api_usage.model).toBe("vlm-model")
+  expect(result.api_usage.provider).toContain("https://vlm.example/v1")
+})
+
+test("enrichSidecar treats empty-string tier var as unset", async () => {
+  process.env["MEDIA_INGEST_API_KEY"] = "base-key"
+  process.env["MEDIA_INGEST_VLM_MODEL"] = ""
+
+  const sink: { config?: CapturedConfig } = {}
+  await enrichSidecar(baseSidecar(), imagePath, { analyze: captureImage(sink) })
+
+  expect(sink.config?.model).toBe("gpt-4o-mini")
 })
