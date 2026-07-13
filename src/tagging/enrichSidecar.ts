@@ -36,14 +36,44 @@ const AudioResultSchema = z.object({}).passthrough()
 
 type ImageResult = z.infer<typeof ImageResultSchema>
 
-function resolveConfig(options: EnrichOptions): ApiClientConfig {
-  const { MEDIA_INGEST_API_KEY, MEDIA_INGEST_BASE_URL, MEDIA_INGEST_MODEL } = process.env
-  const apiKey = options.apiKey ?? MEDIA_INGEST_API_KEY
+function env(key: string): string | undefined {
+  const v = process.env[key]
+  return v !== undefined && v.trim().length > 0 ? v : undefined
+}
+
+function resolveBase(options: EnrichOptions): ApiClientConfig {
+  const apiKey = options.apiKey ?? env("MEDIA_INGEST_API_KEY")
   return {
     api: true,
-    base_url: options.apiBaseUrl ?? MEDIA_INGEST_BASE_URL ?? DEFAULT_BASE_URL,
-    model: options.apiModel ?? MEDIA_INGEST_MODEL ?? DEFAULT_MODEL,
+    base_url: options.apiBaseUrl ?? env("MEDIA_INGEST_BASE_URL") ?? DEFAULT_BASE_URL,
+    model: options.apiModel ?? env("MEDIA_INGEST_MODEL") ?? DEFAULT_MODEL,
     ...(apiKey !== undefined ? { api_key: apiKey } : {}),
+  }
+}
+
+function resolveVlm(base: ApiClientConfig): ApiClientConfig {
+  const vlmUrl = env("MEDIA_INGEST_VLM_BASE_URL")
+  const vlmModel = env("MEDIA_INGEST_VLM_MODEL")
+  const vlmKey = env("MEDIA_INGEST_VLM_API_KEY")
+  if (vlmUrl === undefined && vlmModel === undefined && vlmKey === undefined) return base
+  return {
+    ...base,
+    base_url: vlmUrl ?? base.base_url,
+    model: vlmModel ?? base.model,
+    ...(vlmKey !== undefined ? { api_key: vlmKey } : {}),
+  }
+}
+
+function resolveAudio(vlm: ApiClientConfig): ApiClientConfig {
+  const audioUrl = env("MEDIA_INGEST_AUDIO_BASE_URL")
+  const audioModel = env("MEDIA_INGEST_AUDIO_MODEL")
+  const audioKey = env("MEDIA_INGEST_AUDIO_API_KEY")
+  if (audioUrl === undefined && audioModel === undefined && audioKey === undefined) return vlm
+  return {
+    ...vlm,
+    base_url: audioUrl ?? vlm.base_url,
+    model: audioModel ?? vlm.model,
+    ...(audioKey !== undefined ? { api_key: audioKey } : {}),
   }
 }
 
@@ -137,14 +167,16 @@ export async function enrichSidecar(
   localPath: string,
   options: EnrichOptions,
 ): Promise<MediaSidecar> {
-  const config = resolveConfig(options)
+  const base = resolveBase(options)
+  const vlmConfig = resolveVlm(base)
+  const audioConfig = resolveAudio(vlmConfig)
   const analyze = options.analyze ?? analyzeImage
   const analyzeAudioImpl = options.analyzeAudio ?? analyzeAudio
 
   if (sidecar.media_type === "audio") {
     try {
       await analyzeAudioImpl({
-        ...config,
+        ...audioConfig,
         audio: await audioInput(localPath),
         prompt: "Extract concise audio metadata.",
         schema: AudioResultSchema,
@@ -152,28 +184,28 @@ export async function enrichSidecar(
     } catch (error) {
       logger.error(error instanceof Error ? error.message : "audio enrichment failed")
     }
-    return withFailedUsage(sidecar, config)
+    return withFailedUsage(sidecar, audioConfig)
   }
 
   if (sidecar.media_type !== "image") {
     logger.warn("video/audio enrichment requires ffmpeg", { media_type: sidecar.media_type })
-    return withFailedUsage(sidecar, config)
+    return withFailedUsage(sidecar, vlmConfig)
   }
 
   // no-excuse-ok: API failure must be non-fatal
   try {
     const result = await analyze({
-      ...config,
+      ...vlmConfig,
       image: await imageInput(localPath),
       prompt: IMAGE_PROMPT,
       schema: ImageResultSchema,
     })
     if (result === null) {
-      return withFailedUsage(sidecar, config)
+      return withFailedUsage(sidecar, vlmConfig)
     }
-    return mergeImageResult(sidecar, config, result)
+    return mergeImageResult(sidecar, vlmConfig, result)
   } catch (error) {
     logger.error(error instanceof Error ? error.message : "enrichSidecar failed")
-    return withFailedUsage(sidecar, config)
+    return withFailedUsage(sidecar, vlmConfig)
   }
 }
