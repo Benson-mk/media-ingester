@@ -16,4 +16,3 @@ export function sidecarPath(mediaPath: string): string {
 export function manifestPath(rootPath: string): string {
   return join(rootPath, "media_manifest.jsonl")
 }
-

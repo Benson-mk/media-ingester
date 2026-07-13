@@ -13,6 +13,11 @@ export type ProviderItem = {
   creator: { name: string; profile_url: string }
   license: string
   license_url: string
+  credits?: { required: boolean; text: string }
+  download_tracking_url?: string
+  exif?: Record<string, string | number | boolean>
+  location?: string
+  provider_metadata?: Record<string, unknown>
   api_tags: string[]
   raw: unknown
 }
@@ -23,4 +28,6 @@ export interface Provider {
   id: string
   supported: ReadonlyArray<"image" | "video" | "audio">
   search(q: string, type: MediaTypeFilter, limit: number): Promise<ProviderItem[]>
+  getDetails?(item: ProviderItem): Promise<ProviderItem>
+  trackDownload?(item: ProviderItem): Promise<void>
 }

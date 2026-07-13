@@ -43,7 +43,13 @@ describe("MediaSidecarSchema", () => {
         license_url: "https://pexels.com/license",
         credits: { required: false, text: "Photo by Jane Doe" },
         raw_metadata_path: "raw/12345.json",
-        exif: { camera: "Canon", iso: 400 },
+        raw: {
+          api: { id: 12345 },
+          json_ld: null,
+          bootstrap: { id: 12345, name: "Lake" },
+        },
+        provider_metadata: { engagement: { views: 1200 } },
+        exif: { camera: "Canon", iso: 400, Flash: false },
         location: "Paris, France",
       },
     })
@@ -51,6 +57,9 @@ describe("MediaSidecarSchema", () => {
     expect(result.source?.origin).toBe("external")
     expect(result.source?.provider).toBe("pexels")
     expect(result.source?.exif?.["iso"]).toBe(400)
+    expect(result.source?.exif?.["Flash"]).toBe(false)
+    expect(result.source?.raw?.bootstrap).toEqual({ id: 12345, name: "Lake" })
+    expect(result.source?.provider_metadata).toEqual({ engagement: { views: 1200 } })
     expect(result.source?.location).toBe("Paris, France")
   })
 

@@ -97,9 +97,11 @@ export const SourceBlockSchema = z.object({
     .object({
       api: z.unknown(),
       json_ld: z.unknown(),
+      bootstrap: z.unknown().optional(),
     })
     .optional(),
-  exif: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
+  provider_metadata: z.record(z.string(), z.unknown()).optional(),
+  exif: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
   location: z.string().optional(),
 })
 
