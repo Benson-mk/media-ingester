@@ -104,13 +104,26 @@ Provider credentials are independent of the AI-enrichment credentials below. Kee
 
 ## AI enrichment configuration
 
-Copy `.env.sample` to `.env` and set `MEDIA_INGEST_API_KEY`, or pass `--api-key`. `MEDIA_INGEST_BASE_URL` and `MEDIA_INGEST_MODEL` set the default endpoint and model.
+Copy `.env.sample` to `.env` and set `MEDIA_INGEST_API_KEY`, or pass `--api-key`. `MEDIA_INGEST_BASE_URL` and `MEDIA_INGEST_MODEL` set the default endpoint and model for all calls.
 
-Optional flags: `--api-base-url`, `--api-model`.
+Optional flags: `--api-base-url`, `--api-model` (feed the base tier).
 
-### Audio overrides
+### Model tiers
 
-Audio enrichment needs an audio-capable model. When the default model cannot hear audio, set `MEDIA_INGEST_AUDIO_BASE_URL`, `MEDIA_INGEST_AUDIO_MODEL`, and/or `MEDIA_INGEST_AUDIO_API_KEY` to route audio requests elsewhere. Each falls back to its non-audio counterpart when unset.
+Three tiers, each with `_API_KEY`, `_BASE_URL`, and `_MODEL` variants. A tier is active when any of its variables is set. An active tier declares that endpoint/model handles that media type; unset fields inherit from the next tier down.
+
+| Tier | Env prefix | Handles | Fallback |
+|---|---|---|---|
+| Base LLM | `MEDIA_INGEST_` | text (all by default) | — |
+| VLM | `MEDIA_INGEST_VLM_` | image + video | Base LLM |
+| Audio | `MEDIA_INGEST_AUDIO_` | audio | VLM → Base LLM |
+
+Fallback chains: image/video = `VLM ?? LLM`; audio = `AUDIO ?? VLM ?? LLM`.
+
+**Examples:**
+- Only `MEDIA_INGEST_*` set → one model handles everything.
+- `MEDIA_INGEST_*` + `MEDIA_INGEST_VLM_*` → VLM handles image/video and audio; LLM handles text.
+- All three tiers set → each handles its declared media type.
 
 ## Without vs with AI enrichment
 

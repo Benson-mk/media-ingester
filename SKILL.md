@@ -67,9 +67,9 @@ Unsplash supports images only. For selected items requiring a new or forced down
 
 ## AI Enrichment Configuration
 
-Set `MEDIA_INGEST_API_KEY` in `.env` or pass `--api-key`. Configure the endpoint and model via `MEDIA_INGEST_BASE_URL`/`MEDIA_INGEST_MODEL` env vars or `--api-base-url`/`--api-model` flags (flags win).
+Set `MEDIA_INGEST_API_KEY` in `.env` or pass `--api-key`. Configure the default endpoint and model via `MEDIA_INGEST_BASE_URL`/`MEDIA_INGEST_MODEL` or `--api-base-url`/`--api-model` flags (flags win).
 
-Video enrichment requires ffmpeg to extract frames. Audio enrichment needs an audio-capable model; override routing with `MEDIA_INGEST_AUDIO_BASE_URL`/`MEDIA_INGEST_AUDIO_MODEL`/`MEDIA_INGEST_AUDIO_API_KEY`. Each falls back to its non-audio counterpart when unset.
+Three routing tiers: `MEDIA_INGEST_*` (base LLM, handles everything by default), `MEDIA_INGEST_VLM_*` (image/video; fallback: LLM), `MEDIA_INGEST_AUDIO_*` (audio; fallback: VLM → LLM). A tier is active when any of its variables is set; unset fields inherit from the tier below. Video enrichment requires ffmpeg to extract frames.
 
 ## Rights & Attribution
 
