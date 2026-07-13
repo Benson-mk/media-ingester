@@ -1,5 +1,7 @@
 import { pexelsProvider } from "../providers/pexels"
+import { pixabayProvider } from "../providers/pixabay"
 import type { MediaTypeFilter, Provider } from "../providers/types"
+import { unsplashProvider } from "../providers/unsplash"
 import { wikimediaProvider } from "../providers/wikimedia"
 
 export type ResolveResult =
@@ -16,12 +18,18 @@ export function parseLimit(value: string | undefined, fallback: number): number 
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
+function hasNonemptyEnv(name: string): boolean {
+  return (process.env[name]?.trim().length ?? 0) > 0
+}
+
 /**
  * Resolve providers from the --provider flag.
  * Returns { ok: false } after emitting an error when a required key is missing.
  */
 export function resolveProviders(provider: string | undefined): ResolveResult {
-  const hasPexelsKey = typeof process.env["PEXELS_API_KEY"] === "string"
+  const hasPexelsKey = hasNonemptyEnv("PEXELS_API_KEY")
+  const hasPixabayKey = hasNonemptyEnv("PIXABAY_API_KEY")
+  const hasUnsplashKey = hasNonemptyEnv("UNSPLASH_ACCESS_KEY")
 
   if (provider === "pexels") {
     if (!hasPexelsKey) {
@@ -32,14 +40,51 @@ export function resolveProviders(provider: string | undefined): ResolveResult {
     return { ok: true, providers: [pexelsProvider] }
   }
 
+  if (provider === "pixabay") {
+    if (!hasPixabayKey) {
+      process.exitCode = 1
+      console.error("PIXABAY_API_KEY required")
+      return { ok: false }
+    }
+    return { ok: true, providers: [pixabayProvider] }
+  }
+
+  if (provider === "unsplash") {
+    if (!hasUnsplashKey) {
+      process.exitCode = 1
+      console.error("UNSPLASH_ACCESS_KEY required")
+      return { ok: false }
+    }
+    return { ok: true, providers: [unsplashProvider] }
+  }
+
   if (provider === "wikimedia") {
     return { ok: true, providers: [wikimediaProvider] }
   }
 
-  // "all" (default)
-  if (hasPexelsKey) {
-    return { ok: true, providers: [pexelsProvider, wikimediaProvider] }
+  if (provider !== undefined && provider !== "all") {
+    process.exitCode = 1
+    console.error(`Unknown provider: ${provider}`)
+    return { ok: false }
   }
-  console.warn("PEXELS_API_KEY not set, skipping Pexels")
-  return { ok: true, providers: [wikimediaProvider] }
+
+  // "all" (default). Keep the priority deterministic.
+  const providers: Provider[] = []
+  if (hasPexelsKey) {
+    providers.push(pexelsProvider)
+  } else {
+    console.warn("PEXELS_API_KEY not set, skipping Pexels")
+  }
+  if (hasPixabayKey) {
+    providers.push(pixabayProvider)
+  } else {
+    console.warn("PIXABAY_API_KEY not set, skipping Pixabay")
+  }
+  if (hasUnsplashKey) {
+    providers.push(unsplashProvider)
+  } else {
+    console.warn("UNSPLASH_ACCESS_KEY not set, skipping Unsplash")
+  }
+  providers.push(wikimediaProvider)
+  return { ok: true, providers }
 }
