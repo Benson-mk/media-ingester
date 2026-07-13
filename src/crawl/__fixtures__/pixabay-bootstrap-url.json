@@ -1,0 +1,15 @@
+{
+  "page": {
+    "mediaItem": {
+      "id": "10359152",
+      "name": "Deferred Lake Swan",
+      "fileFormat": "jpg",
+      "isEditorsChoice": true,
+      "nsfw": false,
+      "downloadSources": [{ "label": "4K", "width": 3840, "height": 2560, "size": 1240000 }]
+    }
+  },
+  "request": { "url": "must-not-survive" },
+  "analytics": { "event": "must-not-survive" },
+  "experiments": { "bucket": "must-not-survive" }
+}
