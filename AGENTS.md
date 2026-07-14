@@ -81,18 +81,4 @@ Requires ffmpeg for video/audio `--api` enrichment only.
 - `--api` (AI enrichment) is opt-in; provider search/download hits network regardless.
 - `--provider all` skips keyed providers missing keys (warn); explicitly selecting one without key errors.
 - Model tiers: `MEDIA_INGEST_` (text) ← `MEDIA_INGEST_VLM_` (image/video) ← `MEDIA_INGEST_AUDIO_` (audio); unset fields inherit down-chain.
-- `.scratch/`, `CONTEXT.md`, `docs/adr/` referenced below don't exist yet — proceed silently if absent (per docs/agents/domain.md).
-
-## Agent skills
-
-### Issue tracker
-
-Issues live as local markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default five canonical labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context: one `CONTEXT.md` + `docs/adr/` at repo root. See `docs/agents/domain.md`.
+- `.scratch/`, `CONTEXT.md`, `docs/adr/` don't exist yet — proceed silently if absent (per docs/agents/domain.md).
