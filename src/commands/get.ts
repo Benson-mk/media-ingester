@@ -151,9 +151,9 @@ export async function runGetCommand(
       pixabayBootstrap,
     )
 
-    if (options.api === true && options.apiKey !== undefined) {
+    if (options.api === true) {
       sidecar = await enrichSidecar(sidecar, result.path, {
-        apiKey: options.apiKey,
+        ...(options.apiKey !== undefined ? { apiKey: options.apiKey } : {}),
         ...(options.apiBaseUrl !== undefined ? { apiBaseUrl: options.apiBaseUrl } : {}),
         ...(options.apiModel !== undefined ? { apiModel: options.apiModel } : {}),
       })

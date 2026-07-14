@@ -340,6 +340,74 @@ describe("runGetCommand", () => {
     expect(manifest.length).toBe(1)
   })
 
+  test("--api with MEDIA_INGEST_API_KEY env (no --api-key flag) runs enrichment", async () => {
+    const savedEnv = { ...process.env }
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith("MEDIA_INGEST_")) delete process.env[key]
+    }
+    process.env["MEDIA_INGEST_API_KEY"] = "env-key"
+    process.env["MEDIA_INGEST_BASE_URL"] = "https://llm.example/v1"
+    const enrichment = {
+      title: "AI title",
+      short_caption: "AI caption",
+      detailed_caption: "AI detail",
+      best_use: [],
+      not_recommended_for: [],
+      tags: {
+        core: ["ai-tag"],
+        visual: [],
+        audio: [],
+        mood: ["calm"],
+        style: [],
+        editing: [],
+        project: [],
+      },
+      quality: { overall_score: 7, reuse_score: 6 },
+      image: {
+        composition: {
+          shot_type: "wide",
+          main_subject: "test",
+          background: "plain",
+          text_space: "top",
+          usable_crops: [],
+        },
+        detected_text: [],
+        thumbnail_usefulness: "low",
+      },
+    }
+    global.fetch = mock(async (input: string | URL | Request): Promise<Response> => {
+      const url = typeof input === "string" ? input : input.toString()
+      if (url.includes("chat/completions")) {
+        return new Response(
+          JSON.stringify({ choices: [{ message: { content: JSON.stringify(enrichment) } }] }),
+          { status: 200 },
+        )
+      }
+      return ingesterFetch(input)
+    }) as unknown as typeof fetch
+
+    try {
+      await runGetCommand("test", {
+        provider: "wikimedia",
+        limit: "1",
+        downloadTop: "1",
+        out: outDir,
+        api: true,
+      })
+
+      const sidecarJson: unknown = JSON.parse(
+        await readFile(join(outDir, "wikimedia-File:Test image.jpg-test-image.media.json"), "utf8"),
+      )
+      const parsed = MediaSidecarSchema.parse(sidecarJson)
+      expect(parsed.api_usage.provider).toBe("https://llm.example/v1")
+      expect(parsed.api_usage.media_uploaded_to_api).toBe(true)
+      expect(parsed.tags.core).toContain("ai-tag")
+      expect(parsed.tags.mood).toEqual(["calm"])
+    } finally {
+      process.env = savedEnv
+    }
+  })
+
   test("re-run is idempotent (manifest stays single line)", async () => {
     const opts = { provider: "wikimedia", limit: "1", downloadTop: "1", out: outDir }
     await runGetCommand("test", opts)
