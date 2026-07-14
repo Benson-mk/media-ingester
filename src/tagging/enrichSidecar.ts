@@ -4,37 +4,67 @@ import { extname } from "node:path"
 import { z } from "zod"
 
 import { logger } from "../common/logger"
-import type { MediaSidecar } from "../common/schema"
+import { BgmMetaSchema, ImageMetaSchema, type MediaSidecar } from "../common/schema"
 import { analyzeAudio } from "../llm/audioClient"
-import { type ApiClientConfig, analyzeImage, type ImageInput } from "../llm/vlmClient"
+import {
+  type ApiClientConfig,
+  analyzeImage,
+  type ImageInput,
+  requestStructuredChatCompletion,
+} from "../llm/vlmClient"
+import { buildBgmPrompt } from "./buildBgmPrompt"
+import { buildImagePrompt } from "./buildImagePrompt"
+import {
+  buildVideoPrompt,
+  type VideoTaggingResponse,
+  VideoTaggingResponseSchema,
+} from "./buildVideoPrompt"
+import { extractFirstAudioClip } from "./extractAudioClip"
+import { type SampledFrame, sampleFrames } from "./sampleFrames"
 
 export type EnrichOptions = {
   readonly apiKey?: string
   readonly apiBaseUrl?: string
   readonly apiModel?: string
-  // ponytail: injectable VLM call for tests; defaults to real analyzeImage.
+  // ponytail: injectable API/ffmpeg calls for tests; defaults to real implementations.
   // Upgrade path: drop when a shared HTTP-mock harness lands.
   readonly analyze?: typeof analyzeImage
   readonly analyzeAudio?: typeof analyzeAudio
+  readonly analyzeVideo?: typeof requestStructuredChatCompletion
+  readonly sampleVideoFrames?: typeof sampleFrames
+  readonly readFrame?: (path: string) => Promise<string>
+  readonly extractAudioClip?: typeof extractFirstAudioClip
 }
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1"
 const DEFAULT_MODEL = "gpt-4o-mini"
 
-const IMAGE_PROMPT =
-  "Analyze this image for a stock-media library. Respond with JSON: " +
-  '{"title": short descriptive title, "short_caption": one-sentence caption, ' +
-  '"tags": array of concise keyword tags}.'
+const StringListSchema = z.array(z.string())
 
+// Same response contract as media-tagger's ImageTagResponseSchema.
 const ImageResultSchema = z.object({
   title: z.string(),
   short_caption: z.string(),
-  tags: z.array(z.string()),
+  detailed_caption: z.string(),
+  best_use: StringListSchema,
+  not_recommended_for: StringListSchema,
+  tags: z.object({
+    core: StringListSchema,
+    visual: StringListSchema,
+    audio: StringListSchema,
+    mood: StringListSchema,
+    style: StringListSchema,
+    editing: StringListSchema,
+    project: StringListSchema,
+  }),
+  quality: z.object({ overall_score: z.number(), reuse_score: z.number() }),
+  image: ImageMetaSchema,
 })
 
-const AudioResultSchema = z.object({}).passthrough()
+const BgmResultSchema = BgmMetaSchema.extend({ tags: z.array(z.string()) })
 
 type ImageResult = z.infer<typeof ImageResultSchema>
+type BgmResult = z.infer<typeof BgmResultSchema>
 
 function env(key: string): string | undefined {
   const v = process.env[key]
@@ -86,24 +116,15 @@ function mimeFor(localPath: string): string {
   return "image/jpeg"
 }
 
-function audioMimeFor(localPath: string): string {
-  const ext = extname(localPath).toLowerCase().replace(".", "")
-  if (ext === "mp3" || ext === "mpeg") return "audio/mpeg"
-  return "audio/mpeg"
-}
-
 async function imageInput(localPath: string): Promise<ImageInput> {
   const bytes = await readFile(localPath)
   const dataUrl = `data:${mimeFor(localPath)};base64,${bytes.toString("base64")}`
   return { kind: "data_url", data_url: dataUrl }
 }
 
-async function audioInput(
-  localPath: string,
-): Promise<{ readonly kind: "data_url"; readonly data_url: string }> {
-  const bytes = await readFile(localPath)
-  const dataUrl = `data:${audioMimeFor(localPath)};base64,${bytes.toString("base64")}`
-  return { kind: "data_url", data_url: dataUrl }
+async function defaultReadFrame(path: string): Promise<string> {
+  const bytes = await readFile(path)
+  return `data:image/jpeg;base64,${bytes.toString("base64")}`
 }
 
 function uniqueAppend(existing: readonly string[], additions: readonly string[]): string[] {
@@ -118,30 +139,127 @@ function uniqueAppend(existing: readonly string[], additions: readonly string[])
   return merged
 }
 
+function technicalNumber(sidecar: MediaSidecar, key: string): number | null {
+  const value = sidecar.technical[key]
+  return typeof value === "number" ? value : null
+}
+
+function promptInput(sidecar: MediaSidecar): {
+  width: number | null
+  height: number | null
+  aspect_ratio: string | null
+} {
+  const aspect = sidecar.technical["aspect_ratio"]
+  return {
+    width: technicalNumber(sidecar, "width"),
+    height: technicalNumber(sidecar, "height"),
+    aspect_ratio: typeof aspect === "string" ? aspect : null,
+  }
+}
+
+function keepOr(existing: string, incoming: string): string {
+  return existing.length === 0 ? incoming : existing
+}
+
 function mergeImageResult(
   sidecar: MediaSidecar,
   config: ApiClientConfig,
   result: ImageResult,
 ): MediaSidecar {
+  const { title, short_caption, detailed_caption, best_use, not_recommended_for } = result
   return {
     ...sidecar,
-    summary: {
-      ...sidecar.summary,
-      title: sidecar.summary.title.length === 0 ? result.title : sidecar.summary.title,
-      short_caption:
-        sidecar.summary.short_caption.length === 0
-          ? result.short_caption
-          : sidecar.summary.short_caption,
+    summary: mergeSummary(sidecar.summary, {
+      title,
+      short_caption,
+      detailed_caption,
+      best_use,
+      not_recommended_for,
+    }),
+    tags: mergeTags(sidecar.tags, result.tags),
+    quality: result.quality,
+    image: result.image,
+    api_usage: usage(config),
+  }
+}
+
+function mergeSummary(
+  existing: MediaSidecar["summary"],
+  incoming: MediaSidecar["summary"],
+): MediaSidecar["summary"] {
+  return {
+    title: keepOr(existing.title, incoming.title),
+    short_caption: keepOr(existing.short_caption, incoming.short_caption),
+    detailed_caption: keepOr(existing.detailed_caption, incoming.detailed_caption),
+    best_use: uniqueAppend(existing.best_use, incoming.best_use),
+    not_recommended_for: uniqueAppend(existing.not_recommended_for, incoming.not_recommended_for),
+  }
+}
+
+function mergeTags(
+  existing: MediaSidecar["tags"],
+  incoming: MediaSidecar["tags"],
+): MediaSidecar["tags"] {
+  return {
+    core: uniqueAppend(existing.core, incoming.core),
+    visual: uniqueAppend(existing.visual, incoming.visual),
+    audio: uniqueAppend(existing.audio, incoming.audio),
+    mood: uniqueAppend(existing.mood, incoming.mood),
+    style: uniqueAppend(existing.style, incoming.style),
+    editing: uniqueAppend(existing.editing, incoming.editing),
+    project: uniqueAppend(existing.project, incoming.project),
+  }
+}
+
+function usage(config: ApiClientConfig): MediaSidecar["api_usage"] {
+  return {
+    provider: config.base_url,
+    model: config.model,
+    media_uploaded_to_api: true,
+  }
+}
+
+function mergeVideoResult(
+  sidecar: MediaSidecar,
+  config: ApiClientConfig,
+  frames: readonly SampledFrame[],
+  result: VideoTaggingResponse,
+): MediaSidecar {
+  const first = frames[0]
+  const second = frames[1]
+  const interval = first !== undefined && second !== undefined ? second.time - first.time : 0
+  return {
+    ...sidecar,
+    summary: mergeSummary(sidecar.summary, result.summary),
+    tags: mergeTags(sidecar.tags, result.overall_tags),
+    quality: result.quality,
+    video: {
+      sampling: {
+        interval_seconds: interval,
+        frames: frames.map((frame) => ({ time_seconds: frame.time, path: frame.path })),
+      },
+      segments: result.segments,
     },
+    api_usage: usage(config),
+  }
+}
+
+function mergeBgmResult(
+  sidecar: MediaSidecar,
+  config: ApiClientConfig,
+  result: BgmResult,
+): MediaSidecar {
+  const { tags, ...bgm } = result
+  return {
+    ...sidecar,
     tags: {
       ...sidecar.tags,
-      core: uniqueAppend(sidecar.tags.core, result.tags),
+      audio: uniqueAppend(sidecar.tags.audio, [...bgm.genre, ...tags]),
+      mood: uniqueAppend(sidecar.tags.mood, bgm.mood),
+      editing: uniqueAppend(sidecar.tags.editing, bgm.editing_use),
     },
-    api_usage: {
-      provider: config.base_url,
-      model: config.model,
-      media_uploaded_to_api: true,
-    },
+    bgm,
+    api_usage: usage(config),
   }
 }
 
@@ -170,34 +288,31 @@ export async function enrichSidecar(
   const base = resolveBase(options)
   const vlmConfig = resolveVlm(base)
   const audioConfig = resolveAudio(vlmConfig)
-  const analyze = options.analyze ?? analyzeImage
-  const analyzeAudioImpl = options.analyzeAudio ?? analyzeAudio
 
   if (sidecar.media_type === "audio") {
-    try {
-      await analyzeAudioImpl({
-        ...audioConfig,
-        audio: await audioInput(localPath),
-        prompt: "Extract concise audio metadata.",
-        schema: AudioResultSchema,
-      })
-    } catch (error) {
-      logger.error(error instanceof Error ? error.message : "audio enrichment failed")
-    }
-    return withFailedUsage(sidecar, audioConfig)
+    return enrichAudio(sidecar, localPath, options, audioConfig)
   }
 
-  if (sidecar.media_type !== "image") {
-    logger.warn("video/audio enrichment requires ffmpeg", { media_type: sidecar.media_type })
-    return withFailedUsage(sidecar, vlmConfig)
+  if (sidecar.media_type === "video") {
+    return enrichVideo(sidecar, localPath, options, vlmConfig)
   }
 
-  // no-excuse-ok: API failure must be non-fatal
+  return enrichImage(sidecar, localPath, options, vlmConfig)
+}
+
+// no-excuse-ok: API failure must be non-fatal in all enrich paths
+async function enrichImage(
+  sidecar: MediaSidecar,
+  localPath: string,
+  options: EnrichOptions,
+  vlmConfig: ApiClientConfig,
+): Promise<MediaSidecar> {
+  const analyze = options.analyze ?? analyzeImage
   try {
     const result = await analyze({
       ...vlmConfig,
       image: await imageInput(localPath),
-      prompt: IMAGE_PROMPT,
+      prompt: buildImagePrompt(promptInput(sidecar)),
       schema: ImageResultSchema,
     })
     if (result === null) {
@@ -207,5 +322,91 @@ export async function enrichSidecar(
   } catch (error) {
     logger.error(error instanceof Error ? error.message : "enrichSidecar failed")
     return withFailedUsage(sidecar, vlmConfig)
+  }
+}
+
+async function enrichVideo(
+  sidecar: MediaSidecar,
+  localPath: string,
+  options: EnrichOptions,
+  vlmConfig: ApiClientConfig,
+): Promise<MediaSidecar> {
+  const sample = options.sampleVideoFrames ?? sampleFrames
+  const readFrame = options.readFrame ?? defaultReadFrame
+  const request = options.analyzeVideo ?? requestStructuredChatCompletion
+  try {
+    const duration = technicalNumber(sidecar, "duration")
+    const frames = await sample(localPath, duration !== null ? { durationSeconds: duration } : {})
+    if (frames.length === 0) {
+      logger.warn("video frame sampling produced no frames", { path: localPath })
+      return withFailedUsage(sidecar, vlmConfig)
+    }
+
+    const frameParts = await Promise.all(
+      frames.map(async (frame) => ({
+        type: "image_url" as const,
+        image_url: { url: await readFrame(frame.path) },
+      })),
+    )
+    const result = await request({ ...vlmConfig, schema: VideoTaggingResponseSchema }, [
+      { type: "text", text: buildVideoPrompt({ frames }) },
+      ...frameParts,
+    ])
+    if (result === null) {
+      return withFailedUsage(sidecar, vlmConfig)
+    }
+    return mergeVideoResult(sidecar, vlmConfig, frames, result)
+  } catch (error) {
+    logger.error(error instanceof Error ? error.message : "video enrichment failed")
+    return withFailedUsage(sidecar, vlmConfig)
+  }
+}
+
+async function enrichAudio(
+  sidecar: MediaSidecar,
+  localPath: string,
+  options: EnrichOptions,
+  audioConfig: ApiClientConfig,
+): Promise<MediaSidecar> {
+  const extractClip = options.extractAudioClip ?? extractFirstAudioClip
+  const analyzeAudioImpl = options.analyzeAudio ?? analyzeAudio
+  try {
+    const clip = await extractClip(localPath)
+    if (clip === null) {
+      return withFailedUsage(sidecar, audioConfig)
+    }
+    const result = await analyzeAudioImpl({
+      ...audioConfig,
+      audio: clip,
+      prompt: buildBgmPrompt(bgmPromptInput(sidecar)),
+      schema: BgmResultSchema,
+    })
+    if (result === null) {
+      return withFailedUsage(sidecar, audioConfig)
+    }
+    return mergeBgmResult(sidecar, audioConfig, result)
+  } catch (error) {
+    logger.error(error instanceof Error ? error.message : "audio enrichment failed")
+    return withFailedUsage(sidecar, audioConfig)
+  }
+}
+
+function bgmPromptInput(sidecar: MediaSidecar): {
+  duration: number | null
+  codec: string | null
+  sample_rate: number | null
+  channels: number | null
+  bitrate: number | null
+} {
+  const str = (key: string): string | null => {
+    const value = sidecar.technical[key]
+    return typeof value === "string" ? value : null
+  }
+  return {
+    duration: technicalNumber(sidecar, "duration"),
+    codec: str("codec"),
+    sample_rate: technicalNumber(sidecar, "sample_rate"),
+    channels: technicalNumber(sidecar, "channels"),
+    bitrate: technicalNumber(sidecar, "bitrate"),
   }
 }
