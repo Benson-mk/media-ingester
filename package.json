@@ -16,7 +16,6 @@
   "dependencies": {
     "commander": "^15.0.0",
     "exifr": "^7.1.3",
-    "oh-my-opencode": "^4.16.2",
     "zod": "^4.4.3"
   }
 }
