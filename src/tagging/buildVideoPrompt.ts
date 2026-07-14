@@ -86,5 +86,6 @@ export function buildVideoPrompt(options: BuildVideoPromptOptions): string {
   },
   "quality": { "overall_score": number, "reuse_score": number }
 }`,
+    "Score quality_score, overall_score, and reuse_score on a 0-10 scale: overall_score for production quality, reuse_score for how reusable across projects.",
   ].join("\n")
 }
