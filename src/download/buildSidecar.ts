@@ -1,6 +1,6 @@
 import { parseIsoDuration } from "../common/parseIsoDuration"
 import type { MediaSidecar, SourceBlock } from "../common/schema"
-import type { PexelsJsonLd } from "../crawl/extractJsonLd"
+import type { PexelsJsonLd } from "../crawl/extractPexelsJsonLd"
 import type { ExifData } from "../metadata/extractExif"
 import {
   mergePixabayProviderMetadata,

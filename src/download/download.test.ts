@@ -5,7 +5,7 @@ import { join } from "node:path"
 
 import { sidecarPath } from "../common/paths"
 import { MediaSidecarSchema } from "../common/schema"
-import type { PexelsJsonLd } from "../crawl/extractJsonLd"
+import type { PexelsJsonLd } from "../crawl/extractPexelsJsonLd"
 import type { ProviderItem } from "../providers/types"
 import { buildExternalSidecar } from "./buildSidecar"
 import { downloadAsset } from "./downloadAsset"

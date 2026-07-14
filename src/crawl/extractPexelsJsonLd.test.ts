@@ -1,7 +1,7 @@
 import { afterEach, expect, mock, test } from "bun:test"
 import * as fs from "node:fs"
 import * as path from "node:path"
-import { fetchPexelsJsonLd } from "./extractJsonLd"
+import { fetchPexelsJsonLd } from "./extractPexelsJsonLd"
 
 const fixturesDir = path.join(import.meta.dir, "__fixtures__")
 
