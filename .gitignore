@@ -9,3 +9,4 @@ media_manifest.jsonl
 docs/
 ChatGPT-*.md
 .DS_Store
+.opencode/
