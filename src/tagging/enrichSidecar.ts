@@ -61,7 +61,10 @@ const ImageResultSchema = z.object({
   image: ImageMetaSchema,
 })
 
-const BgmResultSchema = BgmMetaSchema.extend({ tags: z.array(z.string()) })
+const BgmResultSchema = BgmMetaSchema.extend({
+  tags: z.array(z.string()),
+  quality: z.object({ overall_score: z.number(), reuse_score: z.number() }),
+})
 
 type ImageResult = z.infer<typeof ImageResultSchema>
 type BgmResult = z.infer<typeof BgmResultSchema>
@@ -249,7 +252,7 @@ function mergeBgmResult(
   config: ApiClientConfig,
   result: BgmResult,
 ): MediaSidecar {
-  const { tags, ...bgm } = result
+  const { tags, quality, ...bgm } = result
   return {
     ...sidecar,
     tags: {
@@ -258,6 +261,7 @@ function mergeBgmResult(
       mood: uniqueAppend(sidecar.tags.mood, bgm.mood),
       editing: uniqueAppend(sidecar.tags.editing, bgm.editing_use),
     },
+    quality,
     bgm,
     api_usage: usage(config),
   }

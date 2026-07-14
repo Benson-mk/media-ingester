@@ -326,6 +326,7 @@ const bgmResponse = {
   editing_use: ["montage"],
   avoid_use: ["sad scenes"],
   tags: ["synth"],
+  quality: { overall_score: 7, reuse_score: 8 },
 }
 
 test("enrichSidecar audio fills bgm block and merges preserving provider metadata", async () => {
@@ -357,6 +358,7 @@ test("enrichSidecar audio fills bgm block and merges preserving provider metadat
   expect(result.tags.mood).toEqual(["upbeat"])
   expect(result.tags.editing).toEqual(["montage"])
   expect(result.tags.core).toEqual(["existing"])
+  expect(result.quality).toEqual({ overall_score: 7, reuse_score: 8 })
   expect(result.api_usage.media_uploaded_to_api).toBe(true)
   expect(result.source).toEqual(baseSidecar().source)
   expect(seenPrompt).toContain("background music")
