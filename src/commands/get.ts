@@ -11,6 +11,7 @@ import { buildExternalSidecar } from "../download/buildSidecar"
 import { downloadAsset } from "../download/downloadAsset"
 import { extractExif } from "../metadata/extractExif"
 import type { Provider, ProviderItem } from "../providers/types"
+import { categorizeSidecar } from "../tagging/categorizeSidecar"
 import { enrichSidecar } from "../tagging/enrichSidecar"
 import { parseLimit, parseMediaType, resolveProviders } from "./resolveProviders"
 
@@ -24,6 +25,7 @@ export type GetOptions = {
   readonly dryRun?: boolean
   readonly output?: string
   readonly api?: boolean
+  readonly categorize?: boolean
   readonly apiKey?: string
   readonly apiBaseUrl?: string
   readonly apiModel?: string
@@ -150,6 +152,15 @@ export async function runGetCommand(
       embeddedExif,
       pixabayBootstrap,
     )
+
+    if (options.categorize === true || options.api === true) {
+      sidecar = await categorizeSidecar(sidecar, {
+        ...(options.apiKey !== undefined ? { apiKey: options.apiKey } : {}),
+        ...(options.apiBaseUrl !== undefined ? { apiBaseUrl: options.apiBaseUrl } : {}),
+        ...(options.apiModel !== undefined ? { apiModel: options.apiModel } : {}),
+        willEnrich: options.api === true,
+      })
+    }
 
     if (options.api === true) {
       sidecar = await enrichSidecar(sidecar, result.path, {
