@@ -319,8 +319,6 @@ const bgmResponse = {
   genre: ["electronic"],
   mood: ["upbeat"],
   energy: "high",
-  tempo: { bpm: 120, confidence: 0.9 },
-  key: { value: "C major", confidence: 0.5 },
   structure: { has_intro: true, has_outro: false, loopable: true },
   voiceover: { vocal_presence: "none", safe_for_voiceover: true },
   editing_use: ["montage"],
@@ -350,9 +348,15 @@ test("enrichSidecar audio fills bgm block and merges preserving provider metadat
       seenPrompt = opts.prompt
       return bgmResponse
     }) as never,
+    detectTempoKey: async () => ({
+      tempo: { bpm: 120, confidence: 0.9 },
+      key: { value: "C major", confidence: 0.5 },
+    }),
   })
 
-  expect(result.bgm?.tempo.bpm).toBe(120)
+  expect(result.technical["tempo"]).toEqual({ bpm: 120, confidence: 0.9 })
+  expect(result.technical["key"]).toEqual({ value: "C major", confidence: 0.5 })
+  expect(result.bgm?.tempo).toBeUndefined()
   expect(result.bgm?.structure.loopable).toBe(true)
   expect(result.tags.audio).toEqual(["provider-tag", "electronic", "synth"])
   expect(result.tags.mood).toEqual(["upbeat"])
@@ -372,6 +376,7 @@ test("enrichSidecar audio clip extraction failure marks upload false", async () 
     analyzeAudio: (async () => {
       throw new Error("must not be called")
     }) as never,
+    detectTempoKey: async () => null,
   })
 
   expect(result.bgm).toBeUndefined()

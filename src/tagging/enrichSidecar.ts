@@ -19,6 +19,7 @@ import {
   type VideoTaggingResponse,
   VideoTaggingResponseSchema,
 } from "./buildVideoPrompt"
+import { detectTempoKey as defaultDetectTempoKey, type TempoKeyResult } from "./detectTempoKey"
 import { extractFirstAudioClip } from "./extractAudioClip"
 import { type SampledFrame, sampleFrames } from "./sampleFrames"
 
@@ -34,6 +35,7 @@ export type EnrichOptions = {
   readonly sampleVideoFrames?: typeof sampleFrames
   readonly readFrame?: (path: string) => Promise<string>
   readonly extractAudioClip?: typeof extractFirstAudioClip
+  readonly detectTempoKey?: (path: string) => Promise<TempoKeyResult | null>
 }
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1"
@@ -61,7 +63,7 @@ const ImageResultSchema = z.object({
   image: ImageMetaSchema,
 })
 
-const BgmResultSchema = BgmMetaSchema.extend({
+const BgmResultSchema = BgmMetaSchema.omit({ tempo: true, key: true }).extend({
   tags: z.array(z.string()),
   quality: z.object({ overall_score: z.number(), reuse_score: z.number() }),
 })
@@ -74,7 +76,7 @@ function env(key: string): string | undefined {
   return v !== undefined && v.trim().length > 0 ? v : undefined
 }
 
-function resolveBase(options: EnrichOptions): ApiClientConfig {
+export function resolveBase(options: EnrichOptions): ApiClientConfig {
   const apiKey = options.apiKey ?? env("MEDIA_INGEST_API_KEY")
   return {
     api: true,
@@ -374,24 +376,45 @@ async function enrichAudio(
 ): Promise<MediaSidecar> {
   const extractClip = options.extractAudioClip ?? extractFirstAudioClip
   const analyzeAudioImpl = options.analyzeAudio ?? analyzeAudio
+  const enriched = await withLocalTempoKey(sidecar, localPath, options)
   try {
     const clip = await extractClip(localPath)
     if (clip === null) {
-      return withFailedUsage(sidecar, audioConfig)
+      return withFailedUsage(enriched, audioConfig)
     }
     const result = await analyzeAudioImpl({
       ...audioConfig,
       audio: clip,
-      prompt: buildBgmPrompt(bgmPromptInput(sidecar)),
+      prompt: buildBgmPrompt(bgmPromptInput(enriched)),
       schema: BgmResultSchema,
     })
     if (result === null) {
-      return withFailedUsage(sidecar, audioConfig)
+      return withFailedUsage(enriched, audioConfig)
     }
-    return mergeBgmResult(sidecar, audioConfig, result)
+    return mergeBgmResult(enriched, audioConfig, result)
   } catch (error) {
     logger.error(error instanceof Error ? error.message : "audio enrichment failed")
-    return withFailedUsage(sidecar, audioConfig)
+    return withFailedUsage(enriched, audioConfig)
+  }
+}
+
+async function withLocalTempoKey(
+  sidecar: MediaSidecar,
+  localPath: string,
+  options: EnrichOptions,
+): Promise<MediaSidecar> {
+  const detect = options.detectTempoKey ?? defaultDetectTempoKey
+  const tempoKey = await detect(localPath)
+  if (tempoKey === null) {
+    return sidecar
+  }
+  return {
+    ...sidecar,
+    technical: {
+      ...sidecar.technical,
+      tempo: { bpm: tempoKey.tempo.bpm, confidence: tempoKey.tempo.confidence },
+      key: { value: tempoKey.key.value, confidence: tempoKey.key.confidence },
+    },
   }
 }
 
