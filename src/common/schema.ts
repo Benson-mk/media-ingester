@@ -51,14 +51,18 @@ export const BgmMetaSchema = z.object({
   genre: StringListSchema,
   mood: StringListSchema,
   energy: z.string(),
-  tempo: z.object({
-    bpm: z.number(),
-    confidence: z.number(),
-  }),
-  key: z.object({
-    value: z.string(),
-    confidence: z.number(),
-  }),
+  tempo: z
+    .object({
+      bpm: z.number(),
+      confidence: z.number(),
+    })
+    .optional(),
+  key: z
+    .object({
+      value: z.string(),
+      confidence: z.number(),
+    })
+    .optional(),
   structure: z.object({
     has_intro: z.boolean(),
     has_outro: z.boolean(),
