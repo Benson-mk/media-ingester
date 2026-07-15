@@ -118,6 +118,20 @@ Three tiers, each with `_API_KEY`, `_BASE_URL`, and `_MODEL` variants. A tier is
 | VLM | `MEDIA_INGEST_VLM_` | image + video | Base LLM |
 | Audio | `MEDIA_INGEST_AUDIO_` | audio | VLM → Base LLM |
 
+### Tag categorization
+
+`--categorize` runs a text-only AI step that redistributes provider-supplied tags from the "core" bucket into semantic groups (visual, mood, style, editing, audio) and fills empty title and short caption from provider metadata. No media file is uploaded — only tags and metadata are sent to the text-tier endpoint, so `media_uploaded_to_api` stays `false` in the sidecar.
+
+`--api` includes the categorization pass automatically as a prerequisite step.
+
+The categorization pass uses the base `MEDIA_INGEST_` model tier — its primary purpose. If a call fails, the download and sidecar are still written with tags left in core (non-fatal).
+
+Example:
+
+```sh
+bun run src/cli.ts get "beach sunset" --download-top 1 --out ./assets --categorize
+```
+
 Fallback chains: image/video = `VLM ?? LLM`; audio = `AUDIO ?? VLM ?? LLM`.
 
 **Examples:**
@@ -129,6 +143,8 @@ Fallback chains: image/video = `VLM ?? LLM`; audio = `AUDIO ?? VLM ?? LLM`.
 
 Without `--api`, the CLI still contacts the selected stock-media provider to search and download, then writes hashes, technical metadata, provider-supplied tags, sidecars, and manifests. It does not send the media to an AI enrichment service, so only AI-generated summaries, tags, and quality scores stay empty.
 
+With `--categorize` only (no `--api`), tags are reorganized into facet buckets and missing title/short caption are filled from provider metadata — no media is uploaded to an AI service.
+
 API mode sends selected evidence to the configured provider and fills AI-generated fields when the response validates.
 
 ## Video enrichment
@@ -137,7 +153,7 @@ The CLI samples JPEG frames from video with ffmpeg and sends those frames to the
 
 ## Privacy
 
-Do not enable `--api` for private, sensitive, or confidential media. Without `--api`, media is not sent to an AI service, but normal provider search, detail, asset-download, Pixabay website-enrichment, and required Unsplash download-tracking requests still occur.
+Do not enable `--api` for private, sensitive, or confidential media. `--categorize` sends only provider tags and descriptive metadata to the text-tier endpoint; media files are never uploaded in categorize-only mode. Without `--api`, media is not sent to an AI service, but normal provider search, detail, asset-download, Pixabay website-enrichment, and required Unsplash download-tracking requests still occur.
 
 ## Output files
 
